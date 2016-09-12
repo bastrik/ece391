@@ -400,7 +400,7 @@ remove_missle:
 			cmpl 	NEXT(%edx), %ebx
 			je 		found_front
 			cmpl 	$0, NEXT(%edx)
-			je 		remove_last
+			je 		exit_remove
 			movl 	NEXT(%edx), %edx
 			jmp 	search_front
 
