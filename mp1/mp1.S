@@ -37,9 +37,14 @@
 	C2_LOC    = 38
 	C3_LOC    = 58
 	CITY_LEN  = 5
+
+	XHAIR_INIT_X = 40
+	XHAIR_INIT_Y = 12
 	# Game value
 
 	NXT_MSL   = 8 		#next missile block in ebp
+	CMD 	  = 8		#command number from stack
+	MSL_STRUCT = 33 	#length of missile struct
 
 # Data shared between this file and rtc.c helper functions
 
@@ -124,6 +129,28 @@ mp1_rtc_tasklet:
 
 .globl mp1_ioctl
 mp1_ioctl:
+		pushl 	%ebp
+		movl 	%esp, %ebp
+		pushl	%ebx
+		pushl 	%esi
+		pushl	%edi
+
+		movl 	CMD(%ebp), %ebx 				#load command value from stack
+		cmpl 	$0, %ebx
+		jl 		invalid_command
+		cmpl 	$4, %ebx
+		jg 		invalid_command
+
+		jmp 	*jump_table(, %ebx, 4)			
+
+
+		invalid_command:
+		movl 	$-1, %eax 						#if command is invalid, return -1 
+		
+		popl	%edi
+		popl	%esi
+		popl	%ebx
+		leave
 		ret
 
 
@@ -282,8 +309,7 @@ update_missiles:
 
 			process_explode:
 				decl 	EXPLODED(%ebx)
-				movl	EXPLODED(%ebx), %edx
-				cmpl	$0, %edx 			#check if exploded = 0
+				cmpl	$0, EXPLODED(%ebx)	#check if exploded = 0
 				je 		to_remove
 				jmp 	process_frame
 
@@ -383,10 +409,79 @@ remove_missle:
 			ret
 
 mp1_ioctl_startgame:
+		pushl 	%ebp
+		movl 	%esp, %ebp
+		pushl	%ebx
+		pushl 	%esi
+		pushl	%edi
+
+		movl 	$0x0, mp1_missile_list 		#import score and linked list
+		movl 	$0x0, mp1_score
+
+		movl 	base_alive, %eax 			#set all cities to be alive
+		movb 	$1, %eax
+		movb 	$1, 1(%eax)
+		movb 	$1, 2(%eax)
+
+		movl	XHAIR_INIT_X, crosshairs_x  #init crosshair
+		movl	XHAIR_INIT_Y, crosshairs_y
+
+		popl	%edi
+		popl	%esi
+		popl	%ebx
 		ret
 
 mp1_ioctl_addmissile:
-		ret
+		pushl 	%ebp
+		movl 	%esp, %ebp
+		pushl	%ebx
+		pushl 	%esi
+		pushl	%edi
+
+		movl    $8(%ebp), %edx 		#store arg in edx
+		movl 	MSL_STRUCT, %ecx
+		pushl	%edx				#assign memory for a missile struct
+		pushl 	%ecx
+		call 	mp1_malloc	
+		popl 	%ecx
+		popl 	%edx			
+		
+		pushl 	%ecx				#copy missile
+		pushl 	%edx
+		pushl 	%eax
+		call 	mp1_copy_from_user 				
+
+		cmpl 	$0, %eax			#eax contains whether valid transfer
+		jne 	copy_failed
+		
+		popl 	%eax			
+		popl 	%edx			
+		popl 	%ecx 			
+
+		
+		#valid
+		movl 	mp1_missile_list, %ebx
+		movl 	%ebx, NEXT(%eax)
+		movl 	%eax,mp1_missile_list
+		movl 	$0, %eax			#add success
+
+		jmp exit_add 			
+
+		copy_failed:
+			popl 	%eax
+			popl 	%edx			
+			popl 	%ecx 
+			pushl 	%eax				#free the allocated memory
+			call 	mp1_free				
+			popl 	%eax
+			movl	$-1, %eax 				#return -1
+
+		exit_add:
+			popl	%edi
+			popl	%esi
+			popl	%ebx
+			leave
+			ret
 
 mp1_ioctl_movexhairs:
 		ret
@@ -396,3 +491,6 @@ mp1_ioctl_getstatus:
 
 mp1_ioctl_endgame:
 		ret
+
+jump_table:
+.long 	mp1_ioctl_startgame, mp1_ioctl_addmissile, mp1_ioctl_movexhairs, mp1_ioctl_getstatus, mp1_ioctl_endgame
