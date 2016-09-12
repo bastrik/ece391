@@ -106,11 +106,16 @@ mp1_rtc_tasklet:
 		pushl 	%esi
 		pushl	%edi
 
-		call update_missiles
+		call 	update_missiles
 
-		call update_cities
+		cmpl 	$0, %eax
+		jz   	draw_city
+		call 	mp1_notify_user
 
-		call update_crosshair
+		draw_city:
+			call 	update_cities
+
+		call 	update_crosshair
 
 		popl	%edi
 		popl	%esi
@@ -282,14 +287,21 @@ update_missiles:
 		je 		exit 					   #if list empty, exit
 
 		loop_missiles:
-										   #store current location as old location
-			movl 	X(%ebx), %edx
-			movl 	%edx, old_x_loc
-			movl 	Y(%ebx), %edx
-			movl 	%edx, old_y_loc
+
+			process_old:
+				movl 	X(%ebx), %edx 	   #clear old missile
+				shrl	$16, %edx
+				movl 	Y(%ebx), %eax 	
+				shrl	$16, %eax
+				imull 	WIDTH, %eax
+				addl 	%edx, %eax
+				imull 	C_LENGTH, %eax
+				movb	EMPTY, %cl
+				call 	mp1_poke	
 
 			off_screen:					   #check X, Y for offscreen 
 				movl	X(%ebx), %edx
+				shrl 	$16, %edx
 				cmpl	MIN_X,   %edx
 				jl   	to_remove
 				cmpl 	MAX_X,   %edx
@@ -302,26 +314,32 @@ update_missiles:
 				jg   	to_remove
 
 			should_explode:					#check if at destination, if not, update missile
-				movl 	X(%ebx), %edx 		   
-				cmpl 	DEST_X,  %edx
+				movl 	X(%ebx), %edx
+				shrl 	$16, %edx 		   
+				cmpl 	DEST_X(%ebx),  %edx
 				jne  	tick_missile
 
 				movl 	Y(%ebx), %edx
-				cmpl 	DEST_Y,  %edx
+				shrl 	$16, %edx 
+				cmpl 	DEST_Y(%ebx),  %edx
 				jne  	tick_missile
 											##if at destination, explode
 				pushl 	%ebx				   
 				call  	missile_explode
-				addl  	$4, %esp			#remove callee param from stack
-				cmpl	$0, %eax			#if missile_explode returned nonzero value, notify user
-				jz		process_explode
-				call 	mp1_notify_user
-
+				popl 	%ebx
+				cmpl	$0, %eax			
+				jne		process_explode
+				
 			process_explode:
 				decl 	EXPLODED(%ebx)
 				cmpl	$0, EXPLODED(%ebx)	#check if exploded = 0
-				je 		to_remove
-				jmp 	process_frame
+				je 		done_explode
+				movb 	$EXPLOSION, %cl
+				jmp 	process_new
+
+			done_explode:
+				movb	EMPTY, %cl
+				jmp 	to_remove
 
 
 			tick_missile:					#tick missile position
@@ -335,39 +353,24 @@ update_missiles:
 				addl  	%edx, Y(%ebx)
 				movl 	Y(%ebx), %edx
 
-				jmp 	process_frame
+				jmp 	process_new
 
 			to_remove:						#remove missile from screen when above condition met
 				pushl 	%ebp
 				call 	remove_missle
-				addl 	$4, %esp			#remove callee param from stack
-
-											#remove missile from screen
-				movl 	old_y_loc, %eax
-				imull	WIDTH, %eax
-				addl 	old_x_loc, %eax
-				imull 	C_LENGTH, %eax
-				movb	EMPTY, %cl
-				call 	mp1_poke
+				popl 	%ebp
 
 				jmp 	next_missile
 
-			process_frame: 					#redraw frame
-				movl 	old_y_loc, %eax 	#clear old missile
-				imull	WIDTH, %eax
-				addl 	old_x_loc, %eax
+			process_new: 					#redraw frame		
+			 	movl 	X(%ebx), %edx 	  
+				shrl	$16, %edx
+				movl 	Y(%ebx), %eax 	
+				shrl	$16, %eax
+				imull 	WIDTH, %eax
+				addl 	%edx, %eax
 				imull 	C_LENGTH, %eax
-				movb	EMPTY, %cl
-				call 	mp1_poke				
-
-			 	movl 	Y(%ebx), %eax 		#draw updated missile
-			 	imull	WIDTH, %eax
-			 	addl 	X(%ebx), %eax
-			 	imull 	C_LENGTH, %eax
-			 	movb	C(%ebx), %cl
-			 	call 	mp1_poke
-
-			 	movl 	%ebx, PREV 			#current node becomes prev node in next iteration
+				call 	mp1_poke	
 
 			next_missile:
 				movl 	NEXT(%ebx), %ebx
@@ -390,8 +393,12 @@ remove_missle:
 		pushl 	%esi
 		pushl	%edi
 
+		movl 	8(%ebp), %ebx
+		cmpl 	$0, %ebx
+		je 		exit_remove
 		cmpl 	$0, mp1_missile_list		#if called on empty, break
 		je 		exit_remove
+
 		movl 	mp1_missile_list, %edx
 		cmpl 	%edx, %ebx
 		je 		remove_head
