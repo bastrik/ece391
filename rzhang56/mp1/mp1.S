@@ -20,31 +20,31 @@
     # Character to draw for an explosion - '@'
 	EXPLOSION = 64
 	# Character to draw for blank - ''
-	EMPTY  	  = 32
+	EMPTY:     .word 32
 	# Character to draw for crosshair - '+'
-	XHAIR	  = 43
+	XHAIR:	   .word 43
 	# Length of a Character
-	C_LENGTH  = 2
+	C_LENGTH:  .word 2
 
-	MIN_X     = 0
-	MIN_Y     = 0
-	MAX_X     = 79
-	MAX_Y     = 24
-	HEIGHT	  = 25
-	WIDTH     = 80
+MIN_X:     .long 0
+MIN_Y:     .long 0
+MAX_X:     .long 79
+MAX_Y:     .long 24
+HEIGHT:	   .long 25
+WIDTH:     .long 80
 
-	C1_LOC    = 18
-	C2_LOC    = 38
-	C3_LOC    = 58
-	CITY_LEN  = 5
+C1_LOC:    .long 18
+C2_LOC:    .long 38
+C3_LOC:    .long 58
+CITY_LEN:  .long 5
 
-	XHAIR_INIT_X = 40
-	XHAIR_INIT_Y = 12
+XHAIR_INIT_X: .long 40
+XHAIR_INIT_Y: .long 12
 	# Game value
 
-	NXT_MSL   = 8 		#next missile block in ebp
-	CMD 	  = 8		#command number from stack
-	MSL_STRUCT = 33 	#length of missile struct
+NXT_MSL=    8 		#next missile block in ebp
+CMD = 	    8		#command numsber from stack
+MSL_STRUCT: .long 33 	#length of missile struct
 
 # Data shared between this file and rtc.c helper functions
 
@@ -129,13 +129,13 @@ mp1_rtc_tasklet:
 
 .globl mp1_ioctl
 mp1_ioctl:
-		pushl 	%ebp
-		movl 	%esp, %ebp
-		pushl	%ebx
-		pushl 	%esi
-		pushl	%edi
+#		pushl 	%ebp
+#		movl 	%esp, %ebp
+#		pushl	%ebx
+#		pushl 	%esi
+#		pushl	%edi
 
-		movl 	CMD(%ebp), %ebx 				#load command value from stack
+		movl 	CMD(%esp), %ebx 				#load command value from stack
 		cmpl 	$0, %ebx
 		jl 		invalid_command
 		cmpl 	$4, %ebx
@@ -145,16 +145,26 @@ mp1_ioctl:
 
 
 		invalid_command:
-		movl 	$-1, %eax 						#if command is invalid, return -1 
+			movl 	$-1, %eax 						#if command is invalid, return -1 
 		
-		popl	%edi
-		popl	%esi
-		popl	%ebx
-		leave
-		ret
+#		popl	%edi
+#		popl	%esi
+#		popl	%ebx
+#		leave
+			ret
 
 
 # ----------------- Functions private to this file -------------------
+
+update_crosshair:
+		movl 	crosshairs_y, %eax
+		imull 	WIDTH, %eax
+		addl 	crosshairs_x, %eax
+		imull	C_LENGTH, %eax
+		movb 	XHAIR, %cl
+		call 	mp1_poke
+
+		ret
 
 update_cities:
 		pushl 	%ebp
@@ -169,8 +179,8 @@ update_cities:
 
 		draw_c1: 
 
-			movl 	MAX_Y, %edx
-			imull	%edx, WIDTH, %eax
+			movl 	MAX_Y, %eax
+			imull	WIDTH, %eax
 			addl 	C1_LOC, %eax
 			addl 	%esi, %eax
 			imull 	C_LENGTH, %eax
@@ -199,8 +209,8 @@ update_cities:
 
 		draw_c2: 
 
-			movl 	MAX_Y, %edx
-			imull	%edx, WIDTH, %eax
+			movl 	MAX_Y, %eax
+			imull	WIDTH, %eax
 			addl 	C2_LOC, %eax
 			addl 	%esi, %eax
 			imull 	C_LENGTH, %eax
@@ -229,8 +239,8 @@ update_cities:
 
 		draw_c3: 
 
-			movl 	MAX_Y, %edx
-			imull	%edx, WIDTH, %eax
+			movl 	MAX_Y, %eax
+			imull	WIDTH, %eax
 			addl 	C3_LOC, %eax
 			addl 	%esi, %eax
 			imull 	C_LENGTH, %eax
@@ -280,24 +290,24 @@ update_missiles:
 
 			off_screen:					   #check X, Y for offscreen 
 				movl	X(%ebx), %edx
-				cmpl	MIN_X,   %dh
+				cmpl	MIN_X,   %edx
 				jl   	to_remove
-				cmpl 	MAX_X,   %dh
+				cmpl 	MAX_X,   %edx
 				jg   	to_remove
 
 				movl 	Y(%ebx), %edx
-				cmpl 	MIN_Y,   %dh
+				cmpl 	MIN_Y,   %edx
 				jl   	to_remove
-				cmpl 	MAX_Y,   %dh
+				cmpl 	MAX_Y,   %edx
 				jg   	to_remove
 
 			should_explode:					#check if at destination, if not, update missile
 				movl 	X(%ebx), %edx 		   
-				cmpl 	DEST_X   %dh
+				cmpl 	DEST_X,  %edx
 				jne  	tick_missile
 
 				movl 	Y(%ebx), %edx
-				cmpl 	DEST_Y,  %dh
+				cmpl 	DEST_Y,  %edx
 				jne  	tick_missile
 											##if at destination, explode
 				pushl 	%ebx				   
@@ -333,25 +343,25 @@ update_missiles:
 				addl 	$4, %esp			#remove callee param from stack
 
 											#remove missile from screen
-				movl 	old_y_loc, %edx
-				imull	%edx, WIDTH, %eax
+				movl 	old_y_loc, %eax
+				imull	WIDTH, %eax
 				addl 	old_x_loc, %eax
 				imull 	C_LENGTH, %eax
-				movb	BLANK, %cl
+				movb	EMPTY, %cl
 				call 	mp1_poke
 
 				jmp 	next_missile
 
 			process_frame: 					#redraw frame
-				movl 	old_y_loc, %edx 	#clear old missile
-				imull	%edx, WIDTH, %eax
+				movl 	old_y_loc, %eax 	#clear old missile
+				imull	WIDTH, %eax
 				addl 	old_x_loc, %eax
 				imull 	C_LENGTH, %eax
-				movb	BLANK, %cl
+				movb	EMPTY, %cl
 				call 	mp1_poke				
 
-			 	movl 	Y(%ebx), %edx 		#draw updated missile
-			 	imull	%edx, WIDTH, %eax
+			 	movl 	Y(%ebx), %eax 		#draw updated missile
+			 	imull	WIDTH, %eax
 			 	addl 	X(%ebx), %eax
 			 	imull 	C_LENGTH, %eax
 			 	movb	C(%ebx), %cl
@@ -380,26 +390,37 @@ remove_missle:
 		pushl 	%esi
 		pushl	%edi
 
-		movl 	NXT_MSL(%ebp), %ebx
-		cmpl 	$0, %ebx					#if called on empty, break
+		cmpl 	$0, mp1_missile_list		#if called on empty, break
 		je 		exit_remove
-
-		movl	PREV, %ecx
-		cmpl 	%ebx, %ecx 					#if equal, we are removing head
+		movl 	mp1_missile_list, %edx
+		cmpl 	%edx, %ebx
 		je 		remove_head
 
-		movl 	NEXT(%ebx), %edx			#else, update linked list
-		movl	%edx, NEXT(%ecx)
-		jmp 	free_missile
+		search_front: 						#find the missile we want to remove
+			cmpl 	NEXT(%edx), %ebx
+			je 		found_front
+			cmpl 	$0, NEXT(%edx)
+			je 		remove_last
+			movl 	NEXT(%edx), %edx
+			jmp 	search_front
 
-		remove_head:						#update head
-			movl	(NEXT)%ebx, %ecx
-			movl 	%ecx, mp1_missile_list
-		
-		free_missile:						#delete this node
+		found_front:
+			movl 	NEXT(%ebx), %ecx
+			movl 	%ecx, NEXT(%edx)
 			pushl 	%ebx
 			call 	mp1_free
 			addl 	$4, %esp
+			movl 	%edx, %ebx
+			jmp 	exit_remove
+
+		remove_head:						#update head
+			movl	NEXT(%ebx), %ecx
+			movl 	%ecx, mp1_missile_list
+			pushl 	%ebx
+			call 	mp1_free
+			addl 	$4, %esp
+			movl 	mp1_missile_list, %ebx
+			jmp 	exit_remove
 
 		exit_remove: 	
 			popl	%edi
@@ -415,20 +436,20 @@ mp1_ioctl_startgame:
 		pushl 	%esi
 		pushl	%edi
 
+		movl 	$0x00010101, base_alive 	#set all cities to be alive
+
 		movl 	$0x0, mp1_missile_list 		#import score and linked list
 		movl 	$0x0, mp1_score
 
-		movl 	base_alive, %eax 			#set all cities to be alive
-		movb 	$1, %eax
-		movb 	$1, 1(%eax)
-		movb 	$1, 2(%eax)
-
-		movl	XHAIR_INIT_X, crosshairs_x  #init crosshair
-		movl	XHAIR_INIT_Y, crosshairs_y
+		movl	XHAIR_INIT_X, %ecx			#init crosshair
+		movl 	%ecx, crosshairs_x  
+		movl	XHAIR_INIT_Y, %ecx
+		movl	%ecx, crosshairs_y
 
 		popl	%edi
 		popl	%esi
 		popl	%ebx
+		leave
 		ret
 
 mp1_ioctl_addmissile:
@@ -438,42 +459,31 @@ mp1_ioctl_addmissile:
 		pushl 	%esi
 		pushl	%edi
 
-		movl    $8(%ebp), %edx 		#store arg in edx
 		movl 	MSL_STRUCT, %ecx
-		pushl	%edx				#assign memory for a missile struct
 		pushl 	%ecx
 		call 	mp1_malloc	
-		popl 	%ecx
-		popl 	%edx			
 		
-		pushl 	%ecx				#copy missile
-		pushl 	%edx
+		pushl 	8(%ebp)				#copy missile
 		pushl 	%eax
-		call 	mp1_copy_from_user 				
+		call 	mp1_copy_from_user 		
+		popl 	%ecx				#ecx contains node pointer if copy success
+		addl 	$8, %esp		
 
 		cmpl 	$0, %eax			#eax contains whether valid transfer
 		jne 	copy_failed
-		
-		popl 	%eax			
-		popl 	%edx			
-		popl 	%ecx 			
-
-		
+				
 		#valid
 		movl 	mp1_missile_list, %ebx
-		movl 	%ebx, NEXT(%eax)
-		movl 	%eax,mp1_missile_list
+		movl 	%ebx, NEXT(%ecx)
+		movl 	%ecx,mp1_missile_list
 		movl 	$0, %eax			#add success
 
 		jmp exit_add 			
 
 		copy_failed:
-			popl 	%eax
-			popl 	%edx			
-			popl 	%ecx 
-			pushl 	%eax				#free the allocated memory
+			pushl 	%ecx				#free the allocated memory
 			call 	mp1_free				
-			popl 	%eax
+			addl 	$4, %esp
 			movl	$-1, %eax 				#return -1
 
 		exit_add:
@@ -484,12 +494,140 @@ mp1_ioctl_addmissile:
 			ret
 
 mp1_ioctl_movexhairs:
-		ret
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%ebx
+		pushl	%esi
+		pushl	%edi
+
+		movw 	8(%ebp), %bx 		#move x and y to cx and dx respectively
+		movw 	10(%ebp), %dx
+
+		movl 	crosshairs_x, %esi 	#if command changes xhair out of bounds, skip
+		addl 	%ebx, %esi
+		cmpl 	MIN_X, %esi
+		jl 		exit_move
+		cmpl 	MAX_X, %esi
+		jg 		exit_move
+		movl 	crosshairs_y, %esi
+		addl 	%edx, %esi
+		cmpl 	MIN_Y, %esi
+		jl 		exit_move
+		cmpl 	MAX_Y, %esi
+		jg 		exit_move
+
+		movl 	crosshairs_y, %esi 	#remove old xhair
+		movl	WIDTH, %eax
+		imull 	%esi, %eax
+		addl 	crosshairs_x, %eax
+		imull	C_LENGTH, %eax
+		movb	EMPTY, %cl
+		call 	mp1_poke
+
+		movl 	crosshairs_y, %esi 	#draw new xhair
+		imull 	WIDTH, %esi   							
+		movl 	%esi, %eax
+		addl 	%ebx, %eax
+		imull	C_LENGTH, %eax
+		movb	XHAIR, %cl
+		call 	mp1_poke
+
+		addl 	%ebx, crosshairs_x	#update xhair coordinates
+		movl 	%edx, crosshairs_y
+
+		exit_move:
+			popl	%edi
+			popl	%esi
+			popl	%ebx
+			leave
+			ret
 
 mp1_ioctl_getstatus:
-		ret
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%ebx
+		pushl	%esi
+		pushl	%edi
+
+		xor 	%edx, %edx
+		movl 	8(%ebp), %ebx 	#get user space pointer
+
+		movl 	mp1_score, %ecx
+
+		check_c1:
+			cmpb 	$0, base_alive
+			jz 		c1_dead
+			xorw 	0x8000, %dx
+			jmp 	check_c2
+
+		c1_dead:
+			xorw 	0x0000, %dx
+
+		check_c2:
+			cmpb 	$0, base_alive +1
+			jz 		c2_dead
+			xorw 	0x4000, %dx
+			jmp 	check_c3
+
+		c2_dead:
+			xorw 	0x0000, %dx
+
+		check_c3:
+			cmpb 	$0, base_alive +2
+			jz 		c3_dead
+			xorw 	0x2000, %dx
+			jmp 	update_status
+
+		c3_dead:
+			xorw 	0x0000, %dx
+
+		update_status:
+			pushl	$4
+			pushl 	%ecx
+			pushw 	%dx
+			pushl 	%ebx
+			call 	mp1_copy_from_user
+			cmpl 	$0, %eax
+			popl 	%edx
+			addl 	$8, %esp
+			jz 		end_update
+			movl 	$-1, %eax
+
+		end_update:
+			popl	%edi
+			popl	%esi
+			popl	%ebx
+			leave
+			ret
 
 mp1_ioctl_endgame:
+		pushl	%ebp
+		movl	%esp, %ebp
+		pushl	%ebx
+		pushl	%esi
+		pushl	%edi
+
+		cmpl 	$0, mp1_missile_list 	#if list is empty, we are done
+		jz 		end_success
+		movl 	mp1_missile_list, %ebx
+
+		free_mem:
+			movl 	NEXT(%ebx), %ecx
+
+			pushl 	%ebx				#remove this node
+			call 	mp1_free
+			addl 	$4, %esp
+
+			movl 	%ecx, %ebx			#if there's more, remove again
+			cmpl	$0, %ebx
+			jne 	free_mem
+
+	end_success:
+
+		popl	%edi
+		popl	%esi
+		popl	%ebx
+		leave
 		ret
 
 jump_table:
