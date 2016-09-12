@@ -20,11 +20,11 @@
     # Character to draw for an explosion - '@'
 	EXPLOSION = 64
 	# Character to draw for blank - ''
-	EMPTY:     .word 32
+	EMPTY:     .long 32
 	# Character to draw for crosshair - '+'
-	XHAIR:	   .word 43
+	XHAIR:	   .long 43
 	# Length of a Character
-	C_LENGTH:  .word 2
+	C_LENGTH:  .long 2
 
 MIN_X:     .long 0
 MIN_Y:     .long 0
