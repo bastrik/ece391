@@ -592,7 +592,7 @@ void text_to_image (const char* str, int mode)
     // set buffer to have a black background
         for (i = 0; i < image_size; i++)
         {
-            text_buffer[i] = 0x00;
+            text_buffer[i] = 0x10;
         }
         return;
     }
