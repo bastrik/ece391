@@ -249,6 +249,25 @@ game_loop ()
 
 	show_screen ();
 
+	/* process status message, critical section
+	 * need to protect the status message
+	 */
+	 pthread_mutex_lock(&msg_lock);
+	 if (status_msg[0] != '\0')
+	 {
+	 	redraw_status_bar("", 0); //clear status bar first
+	 	redraw_status_bar(status_msg, 3);
+	 }
+	 else{
+	 	redraw_status_bar("", 0); //clear status bar first
+	 	redraw_status_bar(room_name(game_info.where),1);
+	 	redraw_status_bar(get_typed_command(), 2);
+	 }
+	 pthread_mutex_unlock(&msg_lock);
+	/* done processing status massage,
+	 * critical section ends
+	 */
+
 	/*
 	 * Wait for tick.  The tick defines the basic timing of our
 	 * event loop, and is the minimum amount of time between events.

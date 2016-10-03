@@ -43,4 +43,11 @@
 /* Standard VGA text font. */
 extern unsigned char font_data[256][16];
 
+extern unsigned char text_buffer[5760]; // a buffer including all writable area
+
+/* Produces a image buffer given a string */
+extern void text_to_image(const char* str, int mode);
+/* Helper function for text_to_image */
+void char_to_image(const int c, int cur, int start);
+
 #endif /* TEXT_H */

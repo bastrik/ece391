@@ -562,3 +562,96 @@ unsigned char font_data[256][16] = {
      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 };
 
+const int image_size = 5760; // X_width * status bar height
+const int plane_size = 1440; // 5760 / 4
+const int SCREEN_WIDTH = 320;  
+unsigned char text_buffer[5760]; 
+
+/*
+ * text_to_image
+ *   DESCRIPTION:  produce a buffer that holds a
+ *                 graphical image of the ASCII 
+ *                 characters in the string
+ *                 given a string
+ *   INPUTS: str:  the string we want to convert
+ *                 to an image
+ *           mode: an int to determine rendering mode
+ *                 0: reset background
+ *                 1: draw input string to the left
+ *                 2: draw input string to the right
+ *                 3: draw input string to center     
+ *   OUTPUTS:      none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */ 
+void text_to_image (const char* str, int mode)
+{
+    int i, j;
+    if (mode == 0)
+    {
+    // set buffer to have a black background
+        for (i = 0; i < image_size; i++)
+        {
+            text_buffer[i] = 0x00;
+        }
+        return;
+    }
+
+    int str_len = strlen(str);
+    int start;  // where should string start
+
+    //determine start offset by mode
+    if (mode == 1)
+    {
+        start = 0;
+    }else if (mode == 2)
+    {
+        start = SCREEN_WIDTH - FONT_WIDTH * (str_len);
+    }else if (mode == 3)
+    {
+        start = (SCREEN_WIDTH - FONT_WIDTH * (str_len)) / 2;
+    }else  
+        start = 0;
+
+    int c;  //stores ASCII info for current char
+
+    for (j = 0; j < str_len; j++)   
+    {
+        c = (int) str[j];
+        char_to_image(c, j, start);
+    }
+}
+
+/*
+ * char_to_image
+ *   DESCRIPTION:  helper function for
+ *                 text_to_image
+ *   INPUTS: c:    int value of char we want to convert
+ *                 to an image
+ *         start:  offset value 
+ *           cur:  the current character in string 
+ *   OUTPUTS:      none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */ 
+void char_to_image (const int c, int cur, int start)
+{
+    int row, col;
+    int c_data;
+
+    for (row = 0; row < FONT_HEIGHT; row++)
+    {
+        c_data = font_data[c][row];
+        int write_mask = 0x80;
+        for (col = 0; col < FONT_WIDTH; col++)
+        {
+            int p_off = col & 3;
+            int loc   = (p_off * image_size / 4) + 80 * (row + 1) + ((start + 8 * cur + col) / 4);
+            if (c_data & write_mask)
+            {
+                text_buffer[loc] = 0x5;
+            }
+            write_mask >>= 1;
+        }
+    }
+}

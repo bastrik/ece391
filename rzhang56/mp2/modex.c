@@ -142,6 +142,7 @@ static void fill_palette_text ();
 static void write_font_data ();
 static void set_text_mode_3 (int clear_scr);
 static void copy_image (unsigned char* img, unsigned short scr_addr);
+static void copy_status_bar (unsigned char* img, unsigned short scr_addr);
 
 
 /* 
@@ -577,6 +578,35 @@ int
 draw_vert_line (int x)
 {
     /* to be written... */
+    unsigned char buf[SCROLL_X_DIM]; /* buffer for graphical image of line */
+    unsigned char* addr;             /* address of first pixel in build    *
+                                      * buffer (without plane offset)      */
+    int p_off;                       /* offset of plane of first pixel     */
+    int i;                           /* loop index over pixels             */
+
+  /* Check whether requested line falls in the logical view window. */
+    if (x < 0 || x >= SCROLL_X_DIM)
+      return -1;
+
+    /* Adjust x to the logical row value. */
+    x += show_x;
+
+    /* Get the image of the line. */
+    (*vert_line_fn) (x, show_y, buf);
+
+    /* Calculate starting address in build buffer. */
+    addr = img3 + (x >> 2) + show_y * SCROLL_X_WIDTH;
+
+    /* Calculate plane offset of first pixel. */
+    p_off = (3 - (x & 3));
+
+    /* Copy image data into appropriate planes in build buffer. */
+    for (i = 0; i < SCROLL_Y_DIM; i++) {
+        addr[p_off * SCROLL_SIZE] = buf[i];
+        addr += SCROLL_X_WIDTH;
+    }
+
+    /* Return success. */
     return 0;
 }
 
@@ -633,6 +663,35 @@ draw_horiz_line (int y)
 }
 
 #endif /* !defined(TEXT_RESTORE_PROGRAM) */
+
+/* 
+ * draw_status_bar
+ *   DESCRIPTION: draw the status bar to the bottom of the screen
+ *   INPUTS: str:  the string we want to convert
+ *                 to an image
+ *           mode: an int to determine rendering mode
+ *                 0: reset background
+ *                 1: draw input string to the left
+ *                 2: draw input string to the right
+ *                 3: draw input string to center 
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ */
+
+void redraw_status_bar(const char* str, int mode)
+{
+    // call text_to_image in text.c to write to buffer
+    text_to_image(str, mode);
+    
+    // write buffer to vram
+    int i;
+    for (i = 0; i < 4; i++)
+    {
+        SET_WRITE_MASK(1 << (i + 8));
+        copy_status_bar(text_buffer + 1440 * i, target_img + 14560);
+    }
+}
+
 
 
 /*
@@ -988,6 +1047,35 @@ copy_image (unsigned char* img, unsigned short scr_addr)
         "cld                                                 ;"
        	"movl $16000,%%ecx                                   ;"
        	"rep movsb    # copy ECX bytes from M[ESI] to M[EDI]  "
+      : /* no outputs */
+      : "S" (img), "D" (mem_image + scr_addr) 
+      : "eax", "ecx", "memory"
+    );
+}
+
+/*
+ * copy_status bar
+ *   DESCRIPTION: Copy one plane of the status bar from text buffer to the 
+ *                video memory.
+ *   INPUTS: img -- a pointer to a single status bar plane in the text buffer
+ *           scr_addr -- the destination offset in video memory
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: copies a plane from the text buffer to video memory
+ */  
+
+static void
+copy_status_bar (unsigned char* img, unsigned short scr_addr)
+{
+    /* 
+     * memcpy is actually probably good enough here, and is usually
+     * implemented using ISA-specific features like those below,
+     * but the code here provides an example of x86 string moves
+     */
+    asm volatile (
+        "cld                                                 ;"
+        "movl $1440,%%ecx                                   ;"
+        "rep movsb    # copy ECX bytes from M[ESI] to M[EDI]  "
       : /* no outputs */
       : "S" (img), "D" (mem_image + scr_addr) 
       : "eax", "ecx", "memory"
