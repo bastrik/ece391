@@ -1045,7 +1045,7 @@ copy_image (unsigned char* img, unsigned short scr_addr)
      */
     asm volatile (
         "cld                                                 ;"
-       	"movl $16000,%%ecx                                   ;"
+       	"movl $14560,%%ecx                                   ;"
        	"rep movsb    # copy ECX bytes from M[ESI] to M[EDI]  "
       : /* no outputs */
       : "S" (img), "D" (mem_image + scr_addr) 
