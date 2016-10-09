@@ -950,6 +950,27 @@ fill_palette_text ()
     REP_OUTSB (0x03C9, palette_RGB, 32 * 3);
 }
 
+/*
+ * fill_palette_room
+ *   DESCRIPTION: Fill VGA palette with custom palette
+ *                Writes to 192-256 
+ *   INPUTS: a custom palette of 192 colors
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */  
+ 
+void fill_palette_room (unsigned char palette[192][3])
+{
+  // Start writing from location 64
+  OUTB (0x03C8, 0x40);
+  
+  // Write all 192 colors from array.
+  REP_OUTSB (0x03C9, palette, 192 * 3);
+}
+
+
+
 
 /*
  * write_font_data

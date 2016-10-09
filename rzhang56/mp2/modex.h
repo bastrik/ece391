@@ -139,4 +139,7 @@ extern int draw_vert_line (int x);
 /* draw the status bar */
 extern void redraw_status_bar(const char* str, int mode);
 
+/* Fill VGA palette with custom palette */
+extern void fill_palette_room(unsigned char palette[192][3]);
+
 #endif /* MODEX_H */
