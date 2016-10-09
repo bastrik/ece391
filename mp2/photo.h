@@ -52,6 +52,12 @@
 #define MAX_OBJECT_WIDTH  160
 #define MAX_OBJECT_HEIGHT 100
 
+ /* octree constants */
+#define OCTREE_L2_LEN 		64			// Nodes in L2 octree
+#define OCTREE_L4_LEN		4096		// Nodes in L4 octree
+#define OCTREE_L4_SORTED	128			// Nodes in sorted L4 octree
+#define OCTREE_L2_CHILD 	64
+
 
 /* Fill a buffer with the pixels for a horizontal line of current room. */
 extern void fill_horiz_buffer (int x, int y, unsigned char buf[SCROLL_X_DIM]);
@@ -82,6 +88,12 @@ extern image_t* read_obj_image (const char* fname);
 
 /* Read room photo from a file into a dynamically allocated structure. */
 extern photo_t* read_photo (const char* fname);
+
+// These are helper fncs
+int rgb16_to_rgb12(int rgb16);
+int rgb12_to_rgb6(int rgb16);
+int child_from_rgb12(int rgb16);
+int qsort_compare(const void* p1, const void* p2);
 
 /* 
  * N.B.  I'm aware that Valgrind and similar tools will report the fact that

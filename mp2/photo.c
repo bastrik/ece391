@@ -86,6 +86,27 @@ struct image_t {
  */
 static const room_t* cur_room = NULL; 
 
+/*
+ * The Octree node data structure for level 2
+ */
+ struct octree_L2
+ {
+ 	uint32_t pixel_count;						// tracks the occurence of a color
+ 	uint32_t sum_red, sum_green, sum_blue;		// tracks the sum of RGB @ node
+ 	uint32_t child_index_pointer[OCTREE_L2_CHILD];	// tracks L4 children
+ };
+
+ /*
+ * The Octree node data structure for level 4
+ */
+ struct octree_L4
+ {
+ 	uint32_t pixel_count;						// tracks the occurence of a color
+ 	uint32_t index;								// tracks pixel's initial location			
+ 	uint32_t sum_red, sum_green, sum_blue;		// tracks the sum of RGB @ node
+ };
+
+
 
 /* 
  * fill_horiz_buffer
@@ -316,6 +337,8 @@ void
 prep_room (const room_t* r)
 {
     /* Record the current room. */
+    photo_t* p = room_photo(r);
+    fill_palette_room(p->palette);  // function in modex.c
     cur_room = r;
 }
 
@@ -444,47 +467,231 @@ read_photo (const char* fname)
 	return NULL;
     }
 
+    /******************************
+     * Optimize color code starts *
+     ******************************/
+
+     uint32_t image_len = p->hdr.width * p->hdr.height;
+
+     struct octree_L2 L2[OCTREE_L2_LEN];
+     struct octree_L4 L4[OCTREE_L4_LEN];
+
+     // initialize L2
+     uint32_t i, j;
+     uint32_t L2_index, L4_index, child;
+     uint32_t temp;
+     uint32_t avg_red, avg_green, avg_blue;
+
+     for (i = 0; i < OCTREE_L2_LEN; i++)
+     {
+     	L2[i].pixel_count = 0;
+     	L2[i].sum_red = 0;
+     	L2[i].sum_green = 0;
+     	L2[i].sum_blue = 0;
+
+     	for (j = 0; j < OCTREE_L2_CHILD; j++)
+     		L2[i].child_index_pointer[j] = -1;  // initially our L2 octree has no L4 child
+     }
+
+     // initialize L4
+     for (i = 0; i < OCTREE_L4_LEN; i++)
+     {
+     	L4[i].index = i;			// we want to remember where this pixel is initially
+     	L4[i].pixel_count = 0;
+     	L4[i].sum_red = 0;
+     	L4[i].sum_green = 0;
+     	L4[i].sum_blue = 0;
+     }
+
     /* 
      * Loop over rows from bottom to top.  Note that the file is stored
      * in this order, whereas in memory we store the data in the reverse
      * order (top to bottom).
      */
+     uint16_t pixels[image_len]; // stores pixel arrangement info for later access
+
     for (y = p->hdr.height; y-- > 0; ) {
 
 	/* Loop over columns from left to right. */
-	for (x = 0; p->hdr.width > x; x++) {
+		for (x = 0; p->hdr.width > x; x++) {
 
-	    /* 
-	     * Try to read one 16-bit pixel.  On failure, clean up and 
-	     * return NULL.
-	     */
-	    if (1 != fread (&pixel, sizeof (pixel), 1, in)) {
-		free (p->img);
-		free (p);
-	        (void)fclose (in);
-		return NULL;
+		    /* 
+		     * Try to read one 16-bit pixel.  On failure, clean up and 
+		     * return NULL.
+		     */
+		    if (1 != fread (&pixel, sizeof (pixel), 1, in)) {
+			free (p->img);
+			free (p);
+		        (void)fclose (in);
+			return NULL;
 
-	    }
-	    /* 
-	     * 16-bit pixel is coded as 5:6:5 RGB (5 bits red, 6 bits green,
-	     * and 6 bits blue).  We change to 2:2:2, which we've set for the
-	     * game objects.  You need to use the other 192 palette colors
-	     * to specialize the appearance of each photo.
-	     *
-	     * In this code, you need to calculate the p->palette values,
-	     * which encode 6-bit RGB as arrays of three uint8_t's.  When
-	     * the game puts up a photo, you should then change the palette 
-	     * to match the colors needed for that photo.
-	     */
-	    p->img[p->hdr.width * y + x] = (((pixel >> 14) << 4) |
-					    (((pixel >> 9) & 0x3) << 2) |
-					    ((pixel >> 3) & 0x3));
-	}
+		    }
+		    /* 
+		     * 16-bit pixel is coded as 5:6:5 RGB (5 bits red, 6 bits green,
+		     * and 6 bits blue).  We change to 2:2:2, which we've set for the
+		     * game objects.  You need to use the other 192 palette colors
+		     * to specialize the appearance of each photo.
+		     *
+		     * In this code, you need to calculate the p->palette values,
+		     * which encode 6-bit RGB as arrays of three uint8_t's.  When
+		     * the game puts up a photo, you should then change the palette 
+		     * to match the colors needed for that photo.
+		     */
+
+		    /* 
+		     * Don't need this place holder code anymore
+
+		     *p->img[p->hdr.width * y + x] = (((pixel >> 14) << 4) |
+			 *			    (((pixel >> 9) & 0x3) << 2) |
+			 *			    ((pixel >> 3) & 0x3));
+			 */
+
+		    pixels[y * p->hdr.width + x] = pixel; // store pixel location for later access
+
+		    i = rgb16_to_rgb12(pixel);	// calls helper to get the location to put pixel
+
+		    L4[i].pixel_count++;		// increment the times we got this pixel
+		    L4[i].sum_red   += (pixel >> 11) & 0x1F;	// accum low 5 bit using bitmask 0x1F
+		    L4[i].sum_green += (pixel >> 5) & 0x3F;		// accum low 6 bit using bitmask 0x3F
+		    L4[i].sum_blue  += pixel & 0x1F;			// accum low 5 bit using bitmask 0x1F		    
+		}
     }
 
     /* All done.  Return success. */
     (void)fclose (in);
+
+    // now we sort L4 base on frequency of color
+    qsort(L4, OCTREE_L4_LEN, sizeof(struct octree_L4), qsort_compare);
+
+    // for the highest 128 frequencies...
+    for (i = 0; i < OCTREE_L4_SORTED; i++)
+    {
+    	// we want to add the L4 pixels to their parent in L2
+    	L4_index = L4[i].index;
+    	L2_index = rgb12_to_rgb6(L4_index);		// curr node's L2 parent idx
+    	child = child_from_rgb12(L4_index);		// respective L2's child idx
+
+    	L2[L2_index].child_index_pointer[child] = i;
+
+    	// we want to add the top 128 color into the palette
+    	temp = L4[i].pixel_count;	// use temp to store pixel_count
+		avg_red = (temp == 0) ? 0 : L4[i].sum_red / temp;
+		avg_green = (temp == 0) ? 0 : L4[i].sum_green / temp;
+		avg_blue = (temp == 0) ? 0 : L4[i].sum_blue / temp;
+    	    	
+    	p->palette[i][0] = (uint8_t) (avg_red & 0x1F) << 1;
+    	p->palette[i][1] = (uint8_t) (avg_green & 0x3F);
+    	p->palette[i][2] = (uint8_t) (avg_blue & 0x1F) << 1;
+    }
+
+    // for the rest of the frequencies...
+    for (i = OCTREE_L4_SORTED; i < OCTREE_L4_LEN; i++)
+    {
+    	// merge with L2 nodes
+    	L2_index = rgb12_to_rgb6(L4[i].index); 		// curr node's L2 parent idx
+
+    	L2[L2_index].pixel_count += L4[i].pixel_count;
+    	L2[L2_index].sum_red += L4[i].sum_red;
+     	L2[L2_index].sum_green += L4[i].sum_green;
+     	L2[L2_index].sum_blue += L4[i].sum_blue;
+    }
+
+    // then we want to add L2 pixels to palette
+    for (i = 0; i < OCTREE_L2_LEN; i++)
+    {
+    	// we want to add the last 64 colors
+    	temp = L2[i].pixel_count;	// use temp to store pixel_count
+		avg_red = (temp == 0) ? 0 : L2[i].sum_red / temp;
+		avg_green = (temp == 0) ? 0 : L2[i].sum_green / temp;
+		avg_blue = (temp == 0) ? 0 : L2[i].sum_blue / temp;
+		
+    	p->palette[i + OCTREE_L4_SORTED][0] = (uint8_t) (avg_red & 0x1F) << 1;
+    	p->palette[i + OCTREE_L4_SORTED][1] = (uint8_t) (avg_green & 0x3F);
+    	p->palette[i + OCTREE_L4_SORTED][2] = (uint8_t) (avg_blue & 0x1F) << 1;
+    }
+
+    // We don't want to do all the work for nothing!
+    for (i = 0; i < image_len; i++)
+    {
+    	L4_index = rgb16_to_rgb12(pixels[i]);
+    	L2_index = rgb12_to_rgb6 (L4_index);
+    	child = child_from_rgb12 (L4_index);
+    	uint32_t L4_index_sorted = L2[L2_index].child_index_pointer[child];
+
+    	p->img[i] = (L4_index_sorted == -1) ? 
+    		L2_index + OCTREE_L4_SORTED + 64 : L4_index_sorted + 64;
+
+    }
+
+
     return p;
 }
 
 
+/*
+ *	rgb16_to_rgb12
+ *
+ *	Description: 	helper that converts 16 bit RGB to 12 bit RGB
+ *	Input: 			16 bit RGB (5:6:5)
+ *	Output: 		None
+ *	Return Value:	12 bit RGB (4:4:4)
+ *	Side Effects: 	None
+ */
+int rgb16_to_rgb12(int rgb16)
+{
+	int r = ((rgb16 >> 12)& 0x0F) << 8;		// take high 4 bits
+	int g = ((rgb16 >> 7) & 0x0F) << 4;		// 0x0F masks keep lower 4 bit
+	int b = (rgb16 >> 1) & 0x0F;
+	return (r | g | b);
+}
+
+/*
+ *	rgb12_to_rgb6
+ *
+ *	Description: 	helper that converts 12 bit RGB to 6 bit RGB
+ *	Input: 			12 bit RGB (4:4:4)
+ *	Output: 		None
+ *	Return Value:	6 bit RGB (2:2:2)
+ *	Side Effects: 	None
+ */
+int rgb12_to_rgb6(int rgb12)
+{
+	int r = ((rgb12 >> 10) & 0x03) << 4;	// take high 2 bits
+	int g = ((rgb12 >> 6) & 0x03) << 2;		// 0x03 masks keep lower 2 bit
+	int b = (rgb12 >> 2) & 0x03;
+	return (r | g | b);
+}
+
+/*
+ *	child_from_rgb12
+ *
+ *	Description: 	helper that converts 12 bit RGB to L2 child index
+ *	Input: 			12 bit RGB (4:4:4)
+ *	Output: 		None
+ *	Return Value:	L2 child index value
+ *	Side Effects: 	None
+ */
+int child_from_rgb12(int rgb12)
+{
+	int r = ((rgb12 >> 8) & 0x03) << 4;		// take low 2 bits
+	int g = ((rgb12 >> 4) & 0x03) << 2;
+	int b =  rgb12 & 0x03;
+	return (r | g | b);
+}
+
+/*
+ *	qsort_compare
+ *
+ *	Description: 	overriden compare function for system qsort
+ *	Input: 			2 nodes from an octree
+ *	Output: 		None
+ *	Return Value: 	difference between pixel count of 2 nodes
+ *	Side Effects: None
+ */
+
+int qsort_compare(const void* p1, const void* p2)
+{
+	const struct octree_L4* a = p1;
+	const struct octree_L4* b = p2;
+	return (b->pixel_count - a->pixel_count);
+}
