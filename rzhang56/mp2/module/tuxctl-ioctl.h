@@ -12,12 +12,10 @@
 
 
 // Local fncs
-int tuxctl_ioctl_tux_init(struct tty_struct* );
-int tuxctl_ioctl_tux_buttons(struct tty_struct* , unsigned long );
-int tuxctl_ioctl_tux_set_led(struct tty_struct* , unsigned long );
+extern int tuxctl_ioctl_tux_init(struct tty_struct* );
+extern int tuxctl_ioctl_tux_buttons(struct tty_struct* , unsigned long );
+extern int tuxctl_ioctl_tux_set_led(struct tty_struct* , unsigned long );
 
 
-// LED index
-extern unsigned char LED[16];
 #endif
 
