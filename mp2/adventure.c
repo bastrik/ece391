@@ -754,44 +754,43 @@ static void* tux_thread (void* ignore)
 	tick.tv_usec -= 1000000;
     }
 
-    /* Handles the command from the tux controller */
 	while(1)
 	{
-	/* Apply lock to protect cmd value*/
-	(void)pthread_mutex_lock (&cmd_lock);
+	pthread_mutex_lock (&cmd_lock);  // crit section begins
     
     cmd = get_tux_command ();
 	switch (cmd) 
 	{
-	    case CMD_UP:    move_photo_down ();  break;
-	    case CMD_RIGHT: move_photo_left ();  break;
-	    case CMD_DOWN:  move_photo_up ();    break;
-	    case CMD_LEFT:  move_photo_right (); break;
+	    case CMD_UP:
+	        move_photo_down ();  
+	        break;
+	    case CMD_RIGHT: 
+	    	move_photo_left ();  
+	    	break;
+	    case CMD_DOWN:  
+	    	move_photo_up ();    
+	    	break;
+	    case CMD_LEFT:  
+	    	move_photo_right (); 
+	    	break;
 	    case CMD_MOVE_LEFT:   
-		enter_room = (TC_CHANGE_ROOM == 
-			      try_to_move_left (&game_info.where));
-		break;
+			enter_room = (TC_CHANGE_ROOM == try_to_move_left (&game_info.where));
+			break;
 	    case CMD_ENTER:
-		enter_room = (TC_CHANGE_ROOM ==
-			      try_to_enter (&game_info.where));
-		break;
+			enter_room = (TC_CHANGE_ROOM == try_to_enter (&game_info.where));
+			break;
 	    case CMD_MOVE_RIGHT:
-		enter_room = (TC_CHANGE_ROOM == 
-			      try_to_move_right (&game_info.where));
-		break;
+			enter_room = (TC_CHANGE_ROOM == try_to_move_right (&game_info.where));
+			break;
 		case CMD_QUIT: 
 			tux_quit = 1;
 			break;
-	    default: break;
+	    default: 
+	    	break;
 	}
 
-    (void)pthread_mutex_unlock (&cmd_lock);
-	/* If player wins the game, their room becomes NULL. */
-/*	if (NULL == game_info.where) {
-	    game = GAME_WON;
-	}
-*/
-
+    pthread_mutex_unlock (&cmd_lock);
+	
 	/*
 	 * Wait for tick.  The tick defines the basic timing of our
 	 * event loop, and is the minimum amount of time between events.
@@ -889,6 +888,7 @@ int
 main ()
 {
     game_condition_t game;  /* outcome of playing */
+	tux_quit = 0;
 
     /* Randomize for more fun (remove for deterministic layout). */
     srand (time (NULL));
@@ -903,6 +903,13 @@ main ()
     if (0 != sanity_check ()) {
 	PANIC ("failed sanity checks");
     }
+
+    init_tux_port();
+
+    if (0 != pthread_create (&tux_thread_id, NULL, tux_thread, NULL)) {
+        PANIC ("failed to create tux thread");
+    }
+    push_cleanup (cancel_tux_thread, NULL); {
 
     /* Create status message thread. */
     if (0 != pthread_create (&status_thread_id, NULL, status_thread, NULL)) {
@@ -924,6 +931,7 @@ main ()
 
 		game = game_loop ();
 
+		} pop_cleanup (1);
 	    } pop_cleanup (1);
 
 	} pop_cleanup (1);
