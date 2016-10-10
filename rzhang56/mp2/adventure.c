@@ -904,7 +904,7 @@ main ()
 	PANIC ("failed sanity checks");
     }
 
-    init_tux_port();
+    init_tux();
 
     if (0 != pthread_create (&tux_thread_id, NULL, tux_thread, NULL)) {
         PANIC ("failed to create tux thread");
