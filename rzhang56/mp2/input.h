@@ -38,6 +38,15 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+#define UP_MASK 0x10
+#define DOWN_MASK 0x40
+#define LEFT_MASK 0x20
+#define RIGHT_MASK 0x80
+#define C_MASK 0x08
+#define B_MASK 0x04
+#define A_MASK 0x02
+#define	START_MASK 0x01
+
 /* possible commands from input device, whether keyboard or game controller */
 typedef enum {
     CMD_NONE, CMD_RIGHT, CMD_LEFT, CMD_UP, CMD_DOWN,
@@ -69,5 +78,9 @@ extern void shutdown_input ();
  * compiled for a keyboard).
  */
 extern void display_time_on_tux (int num_seconds);
+
+extern cmd_t get_tux_command();
+
+extern void init_tux();
 
 #endif /* INPUT_H */

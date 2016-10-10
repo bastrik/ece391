@@ -10,5 +10,14 @@
 #define TUX_LED_REQUEST _IO('E', 0x14)
 #define TUX_LED_ACK _IO('E', 0x15)
 
+
+// Local fncs
+int tuxctl_ioctl_tux_init(struct tty_struct* );
+int tuxctl_ioctl_tux_buttons(struct tty_struct* , unsigned long );
+int tuxctl_ioctl_tux_set_led(struct tty_struct* , unsigned long );
+
+
+// LED index
+extern unsigned char LED[16];
 #endif
 

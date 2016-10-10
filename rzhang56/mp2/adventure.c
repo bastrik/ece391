@@ -70,6 +70,9 @@ static int sanity_check (void);
 /* outcome of the game */
 typedef enum {GAME_WON, GAME_QUIT} game_condition_t;
 
+int32_t enter_room;      /* player has changed rooms        */
+volatile int tux_quit = 0;
+
 /* structure used to hold game information */
 typedef struct {
     room_t*      where;		 /* current room for player               */
@@ -134,6 +137,7 @@ static const typed_cmd_t cmd_list[] = {
 /* local functions--see function headers for details */
 
 static void cancel_status_thread (void* ignore);
+static void cancel_tux_thread (void* ignore);
 static game_condition_t game_loop (void);
 static int32_t handle_typing (void);
 static void init_game (void);
@@ -143,6 +147,7 @@ static void move_photo_right (void);
 static void move_photo_up (void);
 static void redraw_room (void);
 static void* status_thread (void* ignore);
+static void* tux_thread (void* ignore);
 static int time_is_after (struct timeval* t1, struct timeval* t2);
 
 
@@ -166,6 +171,8 @@ static game_info_t game_info; /* game information */
  * condition variable msg_cv (while holding the msg_lock).
  */
 static pthread_t status_thread_id;
+static pthread_t tux_thread_id;
+static pthread_mutex_t cmd_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t msg_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  msg_cv = PTHREAD_COND_INITIALIZER;
 static char status_msg[STATUS_MSG_LEN + 1] = {'\0'};
@@ -184,6 +191,21 @@ static void
 cancel_status_thread (void* ignore)
 {
     (void)pthread_cancel (status_thread_id);
+}
+
+/* 
+ * cancel_tux_thread
+ *   DESCRIPTION: Terminates the tux helper thread.  Used as
+ *                a cleanup method to ensure proper shutdown.
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: none
+ *   SIDE EFFECTS: none
+ */
+static void
+cancel_tux_thread (void* ignore)
+{
+    (void)pthread_cancel (tux_thread_id);
 }
 
 
@@ -206,7 +228,8 @@ game_loop ()
 
     struct timeval cur_time; /* current time (during tick)      */
     cmd_t cmd;               /* command issued by input control */
-    int32_t enter_room;      /* player has changed rooms        */
+    int time_so_far;
+    int last_time_passed = 0;
 
     /* Record the starting time--assume success. */
     (void)gettimeofday (&start_time, NULL);
@@ -245,6 +268,7 @@ game_loop ()
 
 	    /* Only draw once on entry. */
 	    enter_room = 0;
+	    redraw_status_bar("", 0);
 	}
 
 	show_screen ();
@@ -300,14 +324,20 @@ game_loop ()
 	 * than tick counts for timing, although the real time is rounded
 	 * off to the nearest tick by definition.
 	 */
-	/* (none right now...) */
+	time_so_far = tick_time.tv_sec - start_time.tv_sec;
+	if (time_so_far != last_time_passed)
+	{
+		display_time_on_tux(time_so_far);
+		last_time_passed = time_so_far;
+	}
 
 	/* 
 	 * Handle synchronous events--in this case, only player commands. 
 	 * Note that typed commands that move objects may cause the room
 	 * to be redrawn.
 	 */
-	
+
+	pthread_mutex_lock (&cmd_lock);
 	cmd = get_command ();
 	switch (cmd) {
 	    case CMD_UP:    move_photo_down ();  break;
@@ -334,11 +364,14 @@ game_loop ()
 	    case CMD_QUIT: return GAME_QUIT;
 	    default: break;
 	}
+	pthread_mutex_unlock (&cmd_lock);
 
 	/* If player wins the game, their room becomes NULL. */
 	if (NULL == game_info.where) {
 	    return GAME_WON;
 	}
+	if (tux_quit == 1)
+		return GAME_QUIT;
     } /* end of the main event loop */
 }
 
@@ -697,6 +730,100 @@ status_thread (void* ignore)
 
     /* This code never executes--the thread should always be cancelled. */
     return NULL;
+}
+
+/* 
+ * tux_thread
+ *   DESCRIPTION: Function executed by tux helper thread.
+ *   INPUTS: none (ignored)
+ *   OUTPUTS: none
+ *   RETURN VALUE: NULL
+ *   SIDE EFFECTS: 
+ */
+static void* tux_thread (void* ignore)
+{
+	cmd_t cmd;
+	struct timeval start, tick;
+    struct timeval curr; // current time
+    
+    gettimeofday (&start, NULL); // find start time
+
+    tick = start;  // determine when should it start
+    if ((tick.tv_usec += TICK_USEC) > 1000000) {
+	tick.tv_sec++;
+	tick.tv_usec -= 1000000;
+    }
+
+    /* Handles the command from the tux controller */
+	while(1)
+	{
+	/* Apply lock to protect cmd value*/
+	(void)pthread_mutex_lock (&cmd_lock);
+    
+    cmd = get_tux_command ();
+	switch (cmd) 
+	{
+	    case CMD_UP:    move_photo_down ();  break;
+	    case CMD_RIGHT: move_photo_left ();  break;
+	    case CMD_DOWN:  move_photo_up ();    break;
+	    case CMD_LEFT:  move_photo_right (); break;
+	    case CMD_MOVE_LEFT:   
+		enter_room = (TC_CHANGE_ROOM == 
+			      try_to_move_left (&game_info.where));
+		break;
+	    case CMD_ENTER:
+		enter_room = (TC_CHANGE_ROOM ==
+			      try_to_enter (&game_info.where));
+		break;
+	    case CMD_MOVE_RIGHT:
+		enter_room = (TC_CHANGE_ROOM == 
+			      try_to_move_right (&game_info.where));
+		break;
+		case CMD_QUIT: 
+			tux_quit = 1;
+			break;
+	    default: break;
+	}
+
+    (void)pthread_mutex_unlock (&cmd_lock);
+	/* If player wins the game, their room becomes NULL. */
+/*	if (NULL == game_info.where) {
+	    game = GAME_WON;
+	}
+*/
+
+	/*
+	 * Wait for tick.  The tick defines the basic timing of our
+	 * event loop, and is the minimum amount of time between events.
+	 */
+	do {
+	    if (gettimeofday (&curr, NULL) != 0) 
+		{
+		/* Panic!  (should never happen) */
+		clear_mode_X ();
+		shutdown_input ();
+		perror ("gettimeofday");
+		exit (3);
+	    }
+	} while (!time_is_after (&curr, &tick));
+
+	/*
+	 * Advance the tick time.  If we missed one or more ticks completely, 
+	 * i.e., if the current time is already after the time for the next 
+	 * tick, just skip the extra ticks and advance the clock to the one
+	 * that we haven't missed.
+	 */
+	do {
+	    if ((tick.tv_usec += TICK_USEC) > 1000000) 
+		{
+		tick.tv_sec++;
+		tick.tv_usec -= 1000000;
+	    }
+	} while (time_is_after (&curr, &tick));
+	}
+	
+	
+	return NULL;
 }
 
 
