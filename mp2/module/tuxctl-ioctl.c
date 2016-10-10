@@ -231,6 +231,7 @@ tuxctl_ioctl (struct tty_struct* tty, struct file* file,
  				led_setup[i] |= 0x10;
  			led_index++;
  		}
+ 		bitmask <<= 1;
  	}
 
 	state.display = arg;	// save this as current display
